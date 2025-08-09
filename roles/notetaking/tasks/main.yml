@@ -1,0 +1,146 @@
+# tasks file for roles/notetaking
+
+- name: Update all packages
+  yum:
+    name: "*"
+    state: latest
+
+- name: Install dependencies
+  yum:
+    name:
+      - git
+      - python3
+      - python3-devel
+      - python3-pip
+      - sqlite
+      - sqlite-devel
+      - nginx
+      - gcc
+    state: present
+
+- name: Create app user
+  user:
+    name: appuser
+    home: /srv/notetaking
+    createhome: no
+    shell: /bin/bash
+
+- name: Create app directory
+  file:
+    path: /srv/notetaking
+    state: directory
+    owner: appuser
+    group: appuser
+    mode: '0755'
+
+# ✅ Create subfolders before copying
+- name: Create templates directory
+  file:
+    path: /srv/notetaking/templates
+    state: directory
+    owner: appuser
+    group: appuser
+    mode: '0755'
+
+- name: Create static directory
+  file:
+    path: /srv/notetaking/static
+    state: directory
+    owner: appuser
+    group: appuser
+    mode: '0755'
+
+# ✅ Copy application files
+- name: Deploy app.py
+  copy:
+    src: app.py
+    dest: /srv/notetaking/app.py
+    owner: appuser
+    group: appuser
+
+- name: Deploy HTML templates
+  copy:
+    src: templates/
+    dest: /srv/notetaking/templates/
+    owner: appuser
+    group: appuser
+    mode: '0755'
+
+- name: Deploy static files
+  copy:
+    src: static/
+    dest: /srv/notetaking/static/
+    owner: appuser
+    group: appuser
+    mode: '0755'
+
+- name: Deploy requirements.txt
+  copy:
+    src: requirements.txt
+    dest: /srv/notetaking/requirements.txt
+    owner: appuser
+    group: appuser
+
+# ✅ Create Python virtual environment
+- name: Create Python virtual environment
+  command: python3 -m venv /srv/notetaking/venv
+  args:
+    creates: /srv/notetaking/venv/bin/activate
+
+# ✅ Install dependencies from requirements.txt
+- name: Install pip requirements
+  pip:
+    requirements: /srv/notetaking/requirements.txt
+    virtualenv: /srv/notetaking/venv
+
+# ✅ Ensure SQLite database exists
+- name: Create empty SQLite database if missing
+  command: sqlite3 /srv/notetaking/notes.db ""
+  args:
+    creates: /srv/notetaking/notes.db
+
+# ✅ Ensure correct ownership for database
+- name: Set database ownership
+  file:
+    path: /srv/notetaking/notes.db
+    owner: appuser
+    group: appuser
+    mode: '0644'
+
+# ✅ Create notes table in SQLite
+- name: Create notes table if not exists
+  command: >
+    sqlite3 /srv/notetaking/notes.db
+    "CREATE TABLE IF NOT EXISTS notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      content TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );"
+
+# ✅ Deploy Gunicorn systemd service
+- name: Deploy Gunicorn systemd service
+  template:
+    src: gunicorn.service.j2
+    dest: /etc/systemd/system/notetaking.service
+  notify: restart gunicorn
+
+# ✅ Deploy Nginx config
+- name: Deploy nginx config
+  template:
+    src: nginx_notetaking.conf.j2
+    dest: /etc/nginx/conf.d/notetaking.conf
+  notify: restart nginx
+
+# ✅ Enable and start the app
+- name: Enable and start the app
+  systemd:
+    name: notetaking
+    enabled: yes
+    state: started
+
+# ✅ Enable and start nginx
+- name: Enable and start nginx
+  systemd:
+    name: nginx
+    enabled: yes
+    state: started

@@ -1,0 +1,10 @@
+- name: restart gunicorn
+  systemd:
+    name: notetaking
+    state: restarted
+    daemon_reload: yes
+
+- name: restart nginx
+  service:
+    name: nginx
+    state: restarted
